@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acmp"
+version = "0.1.0"
+description = "Animated Comics/Manga-Manhwa Panels - Turn static comic pages into motion comic videos"
+requires-python = ">=3.10"
+dependencies = [
+    "opencv-python>=4.8",
+    "Pillow>=10.0",
+    "numpy>=1.24",
+    "moviepy>=2.0",
+    "pyyaml>=6.0",
+    "PyMuPDF>=1.23",
+    "click>=8.0",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+depth = [
+    "torch>=2.1",
+    "timm>=0.9",
+]
+segment = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+]
+ai = [
+    "diffusers>=0.25",
+    "accelerate>=0.25",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+acmp = "acmp.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["acmp*"]

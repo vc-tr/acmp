@@ -1,0 +1,41 @@
+input:
+  type: auto              # auto | images | pdf
+  reading_order: auto     # auto | rtl | ltr | vertical
+  dpi: 200                # DPI for PDF rendering
+
+panels:
+  method: contour         # contour | yolo
+  min_area_ratio: 0.01    # minimum panel area as fraction of page
+  max_area_ratio: 0.95    # maximum panel area as fraction of page
+  padding: 5              # pixels of padding around detected panels
+
+depth:
+  model: midas_small      # midas_small | midas_large | depth_anything_v2
+  device: auto            # auto | mps | cuda | cpu
+
+layers:
+  method: sam2            # sam2 | threshold
+  num_layers: 3           # foreground, midground, background
+  inpaint_method: opencv  # opencv | lama
+
+animation:
+  seconds_per_panel: 4.0
+  transition_duration: 0.8
+  parallax:
+    amplitude: 20         # max pixel displacement
+    frequency: 0.3        # oscillation Hz
+    direction: horizontal # horizontal | vertical | circular
+  ken_burns:
+    zoom_range: [1.0, 1.15]
+    pan_speed: 30         # pixels per second
+
+output:
+  resolution: [1080, 1920]  # width x height (9:16 vertical)
+  fps: 24
+  codec: libx264
+  bitrate: "5M"
+  aspect_ratio: "9:16"
+
+ai_motion:
+  enabled: false
+  model: wan2.1
