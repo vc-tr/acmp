@@ -8,7 +8,14 @@ PyMuPDF>=1.23
 click>=8.0
 tqdm>=4.65
 
-# Depth Estimation + Segmentation (requires torch)
+# AI Animation (Wan VACE 1.3B)
 torch>=2.1
 torchvision>=0.16
+diffusers>=0.30
+accelerate>=0.25
+
+# Scene Analysis
+anthropic>=0.40
+
+# Depth Estimation (v1 fallback)
 timm>=0.9
