@@ -22,6 +22,9 @@ from acmp.scene.prompts import (
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag to skip Claude after auth failure (avoids repeating 401 for every panel)
+_claude_auth_failed = False
+
 
 @dataclass
 class PanelAnalysis:
@@ -161,7 +164,7 @@ def analyze_panel_claude(
         return PanelAnalysis.fallback(panel_idx)
     except Exception as e:
         logger.warning(f"Panel {panel_idx + 1}: Claude API error: {e}")
-        return PanelAnalysis.fallback(panel_idx)
+        raise  # Let analyze_panel() handle fallback logic
 
 
 def analyze_panel_ollama(
@@ -253,14 +256,23 @@ def analyze_panel(
     if prefer == "fallback":
         return PanelAnalysis.fallback(panel_idx)
 
-    # Try Claude API first
-    if prefer in ("claude", "auto"):
+    # Try Claude API first (skip if previously failed with auth error)
+    global _claude_auth_failed
+    if prefer in ("claude", "auto") and not _claude_auth_failed:
         try:
             return analyze_panel_claude(panel, panel_idx, total_panels, prev_description, api_key)
         except ImportError:
             logger.info("anthropic package not installed, trying Ollama...")
         except Exception as e:
-            logger.warning(f"Claude API failed: {e}, trying Ollama...")
+            err_str = str(e)
+            if "401" in err_str or "authentication" in err_str.lower() or "api_key" in err_str.lower():
+                _claude_auth_failed = True
+                logger.error(
+                    "Claude API auth failed. Set a valid ANTHROPIC_API_KEY env var, "
+                    "pass --api-key, or use --llm fallback. Skipping Claude for remaining panels."
+                )
+            else:
+                logger.warning(f"Claude API failed: {e}, trying Ollama...")
 
     # Try Ollama fallback
     if prefer in ("ollama", "claude", "auto"):
@@ -280,6 +292,8 @@ def analyze_chapter(
     """Analyze all panels in a chapter sequentially.
 
     Each panel gets context from the previous panel's analysis for narrative flow.
+    Automatically downgrades provider on auth errors (e.g. invalid API key)
+    instead of retrying the same broken call for every panel.
 
     Args:
         panels: List of cropped panel images.
@@ -291,6 +305,7 @@ def analyze_chapter(
     """
     analyses = []
     prev_desc = None
+    effective_prefer = prefer
 
     for i, panel in enumerate(panels):
         logger.info(f"Analyzing panel {i + 1}/{len(panels)}...")
@@ -299,7 +314,7 @@ def analyze_chapter(
             panel_idx=i,
             total_panels=len(panels),
             prev_description=prev_desc,
-            prefer=prefer,
+            prefer=effective_prefer,
             api_key=api_key,
         )
         analyses.append(analysis)

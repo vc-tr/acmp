@@ -58,19 +58,27 @@ def load_pipeline(device: str | None = None):
     logger.info(f"Loading Wan VACE 1.3B on {device}...")
     logger.info("This may take a few minutes on first run (downloading ~3GB model)...")
 
-    # Use float32 for MPS compatibility (bfloat16 not supported on MPS)
-    dtype = torch.float32 if device == "mps" else torch.bfloat16
+    # Use float16 for MPS (supported since PyTorch 2.0+), bfloat16 for CUDA
+    # float16 halves memory vs float32: ~2.6GB vs ~5.2GB for 1.3B model
+    if device == "mps":
+        dtype = torch.float16
+    elif device == "cuda":
+        dtype = torch.bfloat16
+    else:
+        dtype = torch.float32
 
     vae = AutoencoderKLWan.from_pretrained(
         WAN_VACE_MODEL_ID,
         subfolder="vae",
         torch_dtype=dtype,
+        low_cpu_mem_usage=True,
     )
 
     pipe = WanVACEPipeline.from_pretrained(
         WAN_VACE_MODEL_ID,
         vae=vae,
         torch_dtype=dtype,
+        low_cpu_mem_usage=True,
     )
 
     pipe.scheduler = UniPCMultistepScheduler.from_config(
@@ -78,8 +86,16 @@ def load_pipeline(device: str | None = None):
         flow_shift=3.0,  # Lower shift for lower resolution
     )
 
-    # Critical for 8GB: offload model parts to CPU when not in use
-    pipe.enable_model_cpu_offload()
+    # Critical for 8GB: sequential offload moves individual layers to CPU
+    # (more aggressive than enable_model_cpu_offload which moves whole components)
+    pipe.enable_sequential_cpu_offload()
+
+    # Process attention in chunks to reduce peak memory
+    pipe.enable_attention_slicing("auto")
+
+    # Process VAE in slices if supported
+    if hasattr(pipe, "enable_vae_slicing"):
+        pipe.enable_vae_slicing()
 
     _pipeline = pipe
     logger.info("Wan VACE pipeline loaded successfully")
@@ -134,40 +150,40 @@ def _create_vace_inputs(
     width: int,
     height: int,
 ):
-    """Create VACE-compatible conditioning inputs (first frame + mask).
+    """Create VACE-compatible conditioning inputs (video + mask).
 
     For image-to-video, we provide the first frame as reference
     and let the model generate the subsequent frames.
-    """
-    import torch
-    import numpy as np
 
+    VACE API:
+      - video: list of PIL Images (conditioning frames)
+      - mask: list of PIL Images (L mode) — black=keep, white=generate
+    """
     # Prepare the reference image as the first frame
     ref_image = _prepare_image(image, width, height)
 
-    # Create condition frames: first frame is the reference, rest are blank
-    condition_frames = []
-    condition_frames.append(ref_image)
+    # Create conditioning video: first frame is the reference, rest are blank
+    video_frames = []
+    video_frames.append(ref_image)
     for _ in range(num_frames - 1):
-        condition_frames.append(Image.new("RGB", (width, height), (0, 0, 0)))
+        video_frames.append(Image.new("RGB", (width, height), (0, 0, 0)))
 
-    # Create masks: 0 = keep (known frame), 1 = generate
-    # First frame mask = 0 (keep), rest = 1 (generate)
+    # Create masks: black (0) = keep (known frame), white (255) = generate
     masks = []
     masks.append(Image.new("L", (width, height), 0))  # Keep first frame
     for _ in range(num_frames - 1):
         masks.append(Image.new("L", (width, height), 255))  # Generate these
 
-    return condition_frames, masks
+    return video_frames, masks
 
 
 def animate_panel(
     panel: Image.Image,
     motion_prompt: str = "subtle motion, gentle movement",
-    num_frames: int = 25,
+    num_frames: int = 17,
     width: int = 320,
     height: int = 576,
-    num_inference_steps: int = 20,
+    num_inference_steps: int = 14,
     guidance_scale: float = 5.0,
     device: str | None = None,
 ) -> list[Image.Image]:
@@ -205,20 +221,21 @@ def animate_panel(
     logger.info(f"Motion prompt: {motion_prompt[:80]}...")
 
     # Create VACE inputs
-    condition_frames, masks = _create_vace_inputs(panel, num_frames, width, height)
+    video_frames, masks = _create_vace_inputs(panel, num_frames, width, height)
 
     try:
         with torch.no_grad():
             output = pipe(
                 prompt=motion_prompt,
                 negative_prompt="static, frozen, no motion, blurry, distorted, deformed",
-                vace_frames=condition_frames,
-                vace_masks=masks,
+                video=video_frames,
+                mask=masks,
                 height=height,
                 width=width,
                 num_frames=num_frames,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
+                output_type="pil",
             )
 
         frames = output.frames[0]  # List of PIL Images
@@ -243,37 +260,49 @@ def animate_panel(
 def animate_panel_safe(
     panel: Image.Image,
     motion_prompt: str = "subtle motion, gentle movement",
-    max_frames: int = 25,
+    max_frames: int = 17,
     device: str | None = None,
 ) -> list[Image.Image] | None:
-    """Animate a panel with automatic resolution fallback.
+    """Animate a panel with automatic resolution and frame count fallback.
 
-    Tries progressively lower resolutions if OOM errors occur.
+    Tries progressively lower resolutions and fewer frames if OOM errors occur.
     Returns None if all attempts fail.
     """
-    # Resolution tiers to try (9:16 aspect ratio, multiples of 16)
-    resolutions = [
-        (480, 848),   # 480p — might work on 8GB with offloading
-        (320, 576),   # 320p — most likely to work on 8GB
-        (256, 448),   # 256p — last resort
+    import torch
+
+    # Resolution + frame count tiers (9:16 aspect ratio, multiples of 16)
+    # Each tier: (width, height, num_frames)
+    # num_frames must follow 4k+1 rule
+    attempts = [
+        (320, 576, 17),   # 320p, 17 frames — best case for 8GB
+        (256, 448, 17),   # 256p, 17 frames — lower res
+        (256, 448, 13),   # 256p, 13 frames — minimal generation
     ]
 
-    for width, height in resolutions:
+    for width, height, num_frames in attempts:
         try:
-            logger.info(f"Attempting animation at {width}x{height}...")
+            logger.info(f"Attempting animation at {width}x{height}, {num_frames} frames...")
             frames = animate_panel(
                 panel=panel,
                 motion_prompt=motion_prompt,
-                num_frames=max_frames,
+                num_frames=num_frames,
                 width=width,
                 height=height,
                 device=device,
             )
             return frames
         except RuntimeError as e:
-            if "out of memory" in str(e).lower() or "mps" in str(e).lower():
-                logger.warning(f"OOM at {width}x{height}, trying lower resolution...")
+            err_msg = str(e).lower()
+            if "out of memory" in err_msg or "mps" in err_msg:
+                logger.warning(f"OOM at {width}x{height}/{num_frames}f, trying smaller...")
+                # Aggressive cleanup between attempts
+                unload_pipeline()
                 gc.collect()
+                try:
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except Exception:
+                    pass
                 continue
             else:
                 logger.error(f"Unexpected error: {e}")

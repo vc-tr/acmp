@@ -64,6 +64,16 @@ def process_chapter(
     logger.info(f"AI animation: {'enabled' if use_ai else 'disabled (v1 fallback)'}")
     logger.info(f"Scene analysis: {llm_prefer}")
 
+    # Log system memory info (helpful for diagnosing OOM)
+    try:
+        import os
+        mem_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / (1024**3)
+        logger.info(f"System RAM: {mem_gb:.1f}GB")
+        if mem_gb <= 8:
+            logger.info("8GB detected: using reduced resolution/frames for AI animation")
+    except Exception:
+        pass
+
     pages = load_chapter(input_path, dpi=config.input.dpi)
     logger.info(f"Loaded {len(pages)} pages")
 
@@ -173,11 +183,11 @@ def _animate_with_ai(
     ):
         logger.info(f"Panel {i+1}/{len(panels)}: {analysis.action}")
 
-        # Try AI animation
+        # Try AI animation (cap at 17 frames for 8GB, follows 4k+1 rule)
         ai_frames = animate_panel_safe(
             panel=panel,
             motion_prompt=analysis.motion_prompt,
-            max_frames=min(num_frames_per_panel, 25),  # Wan generates max ~25 frames
+            max_frames=min(num_frames_per_panel, 17),
         )
 
         if ai_frames:
