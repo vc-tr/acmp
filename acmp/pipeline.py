@@ -33,6 +33,7 @@ def process_chapter(
     use_depth: bool = False,
     llm_prefer: str = "claude",
     api_key: str | None = None,
+    quality: str = "fast",
 ) -> Path:
     """Process a comic/manga chapter into an animated video.
 
@@ -127,13 +128,28 @@ def process_chapter(
     for i, analysis in enumerate(analyses):
         logger.info(f"  Panel {i+1}: [{analysis.motion_intensity}] {analysis.description[:70]}")
 
+    # ========== Step 4b: Character segmentation ==========
+    segmentation_data = None
+    if use_ai and config.segmentation.enabled and config.ai_motion.character_aware:
+        try:
+            logger.info("Segmenting characters from backgrounds...")
+            from acmp.layers.character_segmenter import segment_panels
+            segmentation_data = segment_panels(panel_images)
+            seg_count = sum(1 for s in segmentation_data if s is not None)
+            logger.info(f"Segmented {seg_count}/{len(panel_images)} panels successfully")
+        except ImportError:
+            logger.warning("rembg not installed. Skipping character segmentation. Install with: pip install rembg[cpu]")
+        except Exception as e:
+            logger.warning(f"Segmentation failed: {e}")
+
     # ========== Step 5: Animate panels ==========
     panel_animations: list[list[Image.Image]] = []
 
     if use_ai:
         logger.info("Animating panels with Wan VACE 1.3B (AI)...")
         panel_animations = _animate_with_ai(
-            panel_images, analyses, output_size, config, fps
+            panel_images, analyses, output_size, config, fps, quality,
+            segmentation_data=segmentation_data,
         )
     else:
         logger.info("Animating panels with v1 engine (Ken Burns/parallax)...")
@@ -164,47 +180,113 @@ def process_chapter(
     return result_path
 
 
+def _extend_frames_pingpong(
+    frames: list[Image.Image],
+    target_count: int,
+    crossfade_length: int = 3,
+) -> list[Image.Image]:
+    """Extend frames to target count using ping-pong looping with crossfade.
+
+    Instead of repeating [1,2,3,1,2,3,...] which creates a visible jump,
+    this creates [1,2,3,2,1,2,3,...] — a natural back-and-forth oscillation.
+    Crossfade blending at reversal points hides the direction change.
+    """
+    if len(frames) >= target_count:
+        return frames[:target_count]
+
+    if len(frames) < 2:
+        return frames * target_count
+
+    # Build one ping-pong cycle: forward + reverse (skip endpoints to avoid freeze)
+    reverse_middle = list(reversed(frames[1:-1]))
+
+    # Apply crossfade at the reversal point (end of forward → start of reverse)
+    cf = min(crossfade_length, len(reverse_middle), len(frames) - 1)
+    if cf > 0 and reverse_middle:
+        for j in range(cf):
+            alpha = (j + 1) / (cf + 1)
+            # Blend the last cf frames of forward with first cf of reverse
+            forward_frame = frames[-(cf - j)]
+            reverse_frame = reverse_middle[j]
+            reverse_middle[j] = Image.blend(forward_frame, reverse_frame, alpha)
+
+    cycle = list(frames) + reverse_middle  # One full oscillation
+
+    # Repeat cycles until we have enough frames
+    result = []
+    while len(result) < target_count:
+        remaining = target_count - len(result)
+        result.extend(cycle[:remaining])
+
+    return result[:target_count]
+
+
 def _animate_with_ai(
     panels: list[Image.Image],
     analyses: list,
     output_size: tuple[int, int],
     config: PipelineConfig,
     fps: int,
+    quality: str = "fast",
+    segmentation_data: list | None = None,
 ) -> list[list[Image.Image]]:
-    """Animate panels using Wan VACE AI model with v1 fallback."""
+    """Animate panels using Wan VACE AI model with v1 fallback.
+
+    When segmentation_data is available, uses composite animation:
+    characters get AI animation, backgrounds get Ken Burns (preserves quality).
+    """
     from acmp.animation.wan_animator import animate_panel_safe, unload_pipeline
     from acmp.animation.ken_burns import render_ken_burns_frames
+    from acmp.animation.postprocess import match_color_histogram, sharpen_frame, upscale_two_stage
 
     panel_animations = []
     num_frames_per_panel = int(config.animation.seconds_per_panel * fps)
+    out_w, out_h = output_size
 
     for i, (panel, analysis) in enumerate(
         tqdm(list(zip(panels, analyses)), desc="AI Animation", unit="panel")
     ):
         logger.info(f"Panel {i+1}/{len(panels)}: {analysis.action}")
 
-        # Try AI animation (cap at 17 frames for 8GB, follows 4k+1 rule)
+        seg = segmentation_data[i] if segmentation_data and i < len(segmentation_data) else None
+
+        if seg is not None:
+            # Character-aware composite animation
+            character_rgba, background_rgb, alpha_mask = seg
+            frames = _animate_composite(
+                panel, character_rgba, background_rgb, alpha_mask,
+                analysis, num_frames_per_panel, output_size, quality,
+            )
+            if frames:
+                panel_animations.append(frames)
+                logger.info(f"  Composite animation: character AI + background Ken Burns")
+                gc.collect()
+                continue
+
+        # Full-panel AI animation (no segmentation or composite failed)
+        motion_prompt = analysis.character_motion_prompt or analysis.motion_prompt
         ai_frames = animate_panel_safe(
             panel=panel,
-            motion_prompt=analysis.motion_prompt,
+            motion_prompt=motion_prompt,
             max_frames=min(num_frames_per_panel, 17),
+            quality=quality,
         )
 
         if ai_frames:
-            # Resize AI frames to output resolution
-            out_w, out_h = output_size
-            resized_frames = [
-                f.resize((out_w, out_h), Image.LANCZOS) for f in ai_frames
-            ]
+            source_panel = panel.convert("RGB")
+            resized_frames = []
+            for f in ai_frames:
+                upscaled = upscale_two_stage(f, out_w, out_h)
+                color_matched = match_color_histogram(source_panel, upscaled)
+                sharpened = sharpen_frame(color_matched)
+                resized_frames.append(sharpened)
 
-            # If AI generated fewer frames than needed, loop/extend
-            while len(resized_frames) < num_frames_per_panel:
-                resized_frames.extend(resized_frames[:num_frames_per_panel - len(resized_frames)])
-
+            resized_frames = _extend_frames_pingpong(
+                resized_frames, num_frames_per_panel
+            )
             panel_animations.append(resized_frames[:num_frames_per_panel])
             logger.info(f"  AI animation: {len(ai_frames)} frames generated")
         else:
-            # Fallback to Ken Burns
             logger.warning(f"  AI failed, falling back to Ken Burns for panel {i+1}")
             kb_frames = render_ken_burns_frames(
                 panel=panel,
@@ -214,16 +296,99 @@ def _animate_with_ai(
             )
             panel_animations.append(kb_frames)
 
-        # Free memory between panels
         gc.collect()
 
-    # Unload AI model after all panels processed
     try:
         unload_pipeline()
     except Exception:
         pass
 
     return panel_animations
+
+
+def _animate_composite(
+    panel: Image.Image,
+    character_rgba: Image.Image,
+    background_rgb: Image.Image,
+    alpha_mask: Image.Image,
+    analysis,
+    num_frames: int,
+    output_size: tuple[int, int],
+    quality: str,
+) -> list[Image.Image] | None:
+    """Composite animation: AI for characters, Ken Burns for background.
+
+    Characters get Wan VACE animation (the part that benefits from AI motion).
+    Background gets Ken Burns (preserves original quality, no AI artifacts).
+    Results are alpha-composited together per frame.
+    """
+    import cv2
+    import numpy as np
+    from acmp.animation.wan_animator import animate_panel_safe
+    from acmp.animation.ken_burns import render_ken_burns_frames
+    from acmp.animation.postprocess import match_color_histogram, sharpen_frame, upscale_two_stage
+
+    out_w, out_h = output_size
+
+    # 1. Animate background with Ken Burns (clean, no AI blur)
+    camera = analysis.camera_suggestion.lower()
+    if "pan" in camera and "left" in camera:
+        effect = "pan_left"
+    elif "pan" in camera and "right" in camera:
+        effect = "pan_right"
+    elif "zoom" in camera and "out" in camera:
+        effect = "zoom_out"
+    else:
+        effect = "zoom_in"
+
+    bg_frames = render_ken_burns_frames(
+        panel=background_rgb,
+        num_frames=num_frames,
+        output_size=output_size,
+        effect=effect,
+    )
+
+    # 2. Animate character with Wan VACE
+    char_prompt = analysis.character_motion_prompt or analysis.motion_prompt
+    char_ai_frames = animate_panel_safe(
+        panel=character_rgba.convert("RGB"),
+        motion_prompt=char_prompt,
+        max_frames=min(num_frames, 17),
+        quality=quality,
+    )
+
+    if not char_ai_frames:
+        return None
+
+    # Post-process character frames
+    source_char = character_rgba.convert("RGB")
+    char_processed = []
+    for f in char_ai_frames:
+        upscaled = upscale_two_stage(f, out_w, out_h)
+        color_matched = match_color_histogram(source_char, upscaled)
+        sharpened = sharpen_frame(color_matched)
+        char_processed.append(sharpened)
+
+    char_processed = _extend_frames_pingpong(char_processed, num_frames)
+
+    # 3. Prepare alpha mask for compositing
+    mask_resized = alpha_mask.resize((out_w, out_h), Image.LANCZOS)
+    # Soften edges: dilate slightly then blur for natural blending
+    mask_np = np.array(mask_resized)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask_np = cv2.dilate(mask_np, kernel, iterations=2)
+    mask_np = cv2.GaussianBlur(mask_np, (7, 7), 0)
+    soft_mask = Image.fromarray(mask_np).convert("L")
+
+    # 4. Composite: character over background per frame
+    composited = []
+    for j in range(num_frames):
+        bg = bg_frames[j] if j < len(bg_frames) else bg_frames[-1]
+        char = char_processed[j] if j < len(char_processed) else char_processed[-1]
+        # Use soft mask to blend character onto background
+        composited.append(Image.composite(char, bg, soft_mask))
+
+    return composited
 
 
 def _animate_with_v1(

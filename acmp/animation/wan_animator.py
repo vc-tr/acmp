@@ -177,6 +177,14 @@ def _create_vace_inputs(
     return video_frames, masks
 
 
+# Quality presets: name -> num_inference_steps
+QUALITY_PRESETS = {
+    "fast": 14,
+    "balanced": 20,
+    "quality": 25,
+}
+
+
 def animate_panel(
     panel: Image.Image,
     motion_prompt: str = "subtle motion, gentle movement",
@@ -185,6 +193,7 @@ def animate_panel(
     height: int = 576,
     num_inference_steps: int = 14,
     guidance_scale: float = 5.0,
+    quality: str | None = None,
     device: str | None = None,
 ) -> list[Image.Image]:
     """Generate animated frames from a static panel image.
@@ -197,12 +206,16 @@ def animate_panel(
         height: Output height (multiple of 16). 576 for 9:16.
         num_inference_steps: Diffusion steps (lower = faster, less quality).
         guidance_scale: Prompt adherence strength.
+        quality: Preset overriding num_inference_steps ('fast', 'balanced', 'quality').
         device: Compute device override.
 
     Returns:
         List of PIL Images (animation frames).
     """
     import torch
+
+    if quality and quality in QUALITY_PRESETS:
+        num_inference_steps = QUALITY_PRESETS[quality]
 
     pipe = load_pipeline(device)
 
@@ -261,6 +274,7 @@ def animate_panel_safe(
     panel: Image.Image,
     motion_prompt: str = "subtle motion, gentle movement",
     max_frames: int = 17,
+    quality: str | None = None,
     device: str | None = None,
 ) -> list[Image.Image] | None:
     """Animate a panel with automatic resolution and frame count fallback.
@@ -288,6 +302,7 @@ def animate_panel_safe(
                 num_frames=num_frames,
                 width=width,
                 height=height,
+                quality=quality,
                 device=device,
             )
             return frames

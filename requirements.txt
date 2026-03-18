@@ -17,5 +17,8 @@ accelerate>=0.25
 # Scene Analysis
 anthropic>=0.40
 
+# Character Segmentation
+rembg[cpu]>=2.0
+
 # Depth Estimation (v1 fallback)
 timm>=0.9

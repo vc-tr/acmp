@@ -11,6 +11,8 @@ You must respond ONLY with valid JSON matching this exact schema:
   "emotion": "the dominant emotional tone (e.g., 'calm', 'intense', 'sad', 'comedic')",
   "camera_suggestion": "suggested camera movement for animation (e.g., 'slow zoom in', 'pan left to right', 'slight shake', 'static with parallax')",
   "motion_prompt": "A detailed prompt describing how to animate this panel. Describe the motion of characters, hair, clothing, environment. Be specific about direction and speed of movement.",
+  "character_motion_prompt": "Motion prompt for characters ONLY: body movement, breathing, gestures, expressions, hair, clothing physics. Do not describe background.",
+  "background_motion_prompt": "Motion prompt for background/environment ONLY: clouds, wind effects, particles, lighting shifts. Do not describe characters.",
   "transition_to_next": "suggested transition type to the next panel: 'crossfade', 'cut', 'slide_left', 'slide_right', 'zoom_through', 'fade_to_black'"
 }
 

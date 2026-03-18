@@ -70,9 +70,18 @@ class OutputConfig:
 
 
 @dataclass
+class SegmentationConfig:
+    enabled: bool = True
+    model: str = "isnet-anime"
+    method: str = "rembg"
+
+
+@dataclass
 class AIMotionConfig:
     enabled: bool = False
     model: str = "wan2.1"
+    character_aware: bool = True
+    background_animation: str = "ken_burns"
 
 
 @dataclass
@@ -83,6 +92,7 @@ class PipelineConfig:
     layers: LayerConfig = field(default_factory=LayerConfig)
     animation: AnimationConfig = field(default_factory=AnimationConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
     ai_motion: AIMotionConfig = field(default_factory=AIMotionConfig)
 
     @classmethod
@@ -121,6 +131,8 @@ class PipelineConfig:
             cfg.animation = AnimationConfig(**anim, parallax=parallax, ken_burns=ken_burns)
         if "output" in data:
             cfg.output = OutputConfig(**data["output"])
+        if "segmentation" in data:
+            cfg.segmentation = SegmentationConfig(**data["segmentation"])
         if "ai_motion" in data:
             cfg.ai_motion = AIMotionConfig(**data["ai_motion"])
         return cfg

@@ -36,6 +36,8 @@ class PanelAnalysis:
     emotion: str = ""
     camera_suggestion: str = ""
     motion_prompt: str = ""
+    character_motion_prompt: str = ""
+    background_motion_prompt: str = ""
     transition_to_next: str = "crossfade"
 
     @classmethod
@@ -48,6 +50,8 @@ class PanelAnalysis:
             emotion=data.get("emotion", ""),
             camera_suggestion=data.get("camera_suggestion", ""),
             motion_prompt=data.get("motion_prompt", ""),
+            character_motion_prompt=data.get("character_motion_prompt", ""),
+            background_motion_prompt=data.get("background_motion_prompt", ""),
             transition_to_next=data.get("transition_to_next", "crossfade"),
         )
 
@@ -62,6 +66,8 @@ class PanelAnalysis:
             emotion="neutral",
             camera_suggestion="slow zoom in",
             motion_prompt="subtle breathing motion, slight hair movement, gentle parallax depth effect",
+            character_motion_prompt="subtle breathing, slight body sway, hair movement",
+            background_motion_prompt="",
             transition_to_next="crossfade",
         )
 

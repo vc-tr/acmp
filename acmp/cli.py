@@ -80,6 +80,12 @@ def main():
     help="Output frames per second.",
 )
 @click.option(
+    "--quality", "-q",
+    type=click.Choice(["fast", "balanced", "quality"]),
+    default="fast",
+    help="AI animation quality: fast (14 steps), balanced (20), quality (25).",
+)
+@click.option(
     "--verbose", "-v",
     is_flag=True,
     default=False,
@@ -96,6 +102,7 @@ def process(
     reading_order: str,
     seconds_per_panel: float | None,
     fps: int | None,
+    quality: str,
     verbose: bool,
 ):
     """Process a comic chapter into an animated video.
@@ -146,6 +153,7 @@ def process(
             use_depth=depth,
             llm_prefer=llm,
             api_key=api_key,
+            quality=quality,
         )
         click.echo(f"\nVideo saved to: {result}")
     except Exception as e:
