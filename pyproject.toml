@@ -8,10 +8,11 @@ version = "0.2.0"
 description = "Animated Comics/Manga-Manhwa Panels - Turn static comic pages into motion comic videos"
 requires-python = ">=3.10"
 dependencies = [
-    # headless build: no libGL/GUI system deps — correct for a server/CLI/CI/Docker pipeline
-    "opencv-python-headless>=4.8",
-    "Pillow>=10.0",
-    "numpy>=1.24",
+    # headless build: no libGL/GUI system deps — correct for a server/CLI/CI/Docker pipeline.
+    # Pin <4.10: newer wheels declare numpy>=2, which breaks the stack below.
+    "opencv-python-headless>=4.8,<4.10",
+    "Pillow>=10.0,<12",  # moviepy/streamlit require Pillow <12
+    "numpy>=1.24,<2",    # numpy 2.x breaks streamlit/moviepy/matplotlib in this stack
     "moviepy>=2.0",
     "pyyaml>=6.0",
     "PyMuPDF>=1.23",

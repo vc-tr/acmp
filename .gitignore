@@ -24,6 +24,10 @@ models/
 # Output
 output/
 
+# Training artifacts (weights, datasets, ultralytics run dirs) — reproducible via `acmp train-detector`
+runs/
+yolo*.pt
+
 # IDE
 .vscode/
 .idea/

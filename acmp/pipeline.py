@@ -18,7 +18,10 @@ from tqdm import tqdm
 
 from acmp.config import PipelineConfig
 from acmp.ingest.loader import load_chapter
-from acmp.panels.detector import detect_panels, detect_panels_vertical_scroll
+from acmp.panels.detector import (
+    detect_panels_vertical_scroll,
+    make_panel_detector,
+)
 from acmp.utils.image import crop_panel
 from acmp.utils.reading_order import detect_reading_order, sort_panels_by_reading_order
 from acmp.video.assembler import frames_to_video
@@ -90,13 +93,17 @@ def process_chapter(
     logger.info("Detecting panels...")
     all_panels: list[tuple[Image.Image, tuple[int, int, int, int], tuple[int, int]]] = []
 
+    # Detector chosen by config (contour heuristic by default, or a learned YOLO
+    # model when panels.method == "yolo"). Vertical scroll keeps its dedicated splitter.
+    panel_detector = make_panel_detector(config.panels)
+
     for page_idx, page in enumerate(tqdm(pages, desc="Panel detection", unit="page")):
         page_size = (page.width, page.height)
 
         if reading_order == "vertical":
             bboxes = detect_panels_vertical_scroll(page, config.panels)
         else:
-            bboxes = detect_panels(page, config.panels)
+            bboxes = panel_detector(page)
 
         bboxes = sort_panels_by_reading_order(bboxes, reading_order, page.height)
 

@@ -1,12 +1,15 @@
 """Tests for the synthetic comic-page generator."""
 
+import numpy as np
 import pytest
 
 from acmp.eval.metrics import box_iou
 from acmp.eval.synthetic import (
     boxes_to_yolo,
+    degrade_image,
     generate_comic_page,
     generate_dataset,
+    generate_split,
     yolo_to_boxes,
 )
 
@@ -56,3 +59,28 @@ def test_yolo_roundtrip():
     back = yolo_to_boxes(lines, 800, 1000)
     for orig, rt in zip(page.boxes, back):
         assert all(abs(a - b) <= 1 for a, b in zip(orig, rt))
+
+
+def test_degrade_preserves_geometry():
+    page = generate_comic_page(2, 2, 600, 800, seed=0)
+    deg = degrade_image(page.image, seed=1)
+    assert deg.size == page.image.size
+    assert deg.mode == "RGB"
+
+
+def test_generate_split_keys_and_counts():
+    split = generate_split(n_train=5, n_val=3, n_test=4, seed=0)
+    assert set(split) == {"train", "val", "test_clean", "test_degraded"}
+    assert len(split["train"]) == 5
+    assert len(split["val"]) == 3
+    assert len(split["test_clean"]) == 4
+    assert len(split["test_degraded"]) == 4
+
+
+def test_degraded_differs_from_clean_but_keeps_boxes():
+    split = generate_split(n_train=0, n_val=0, n_test=3, seed=0)
+    clean, degraded = split["test_clean"][0], split["test_degraded"][0]
+    a, b = np.asarray(clean.image), np.asarray(degraded.image)
+    assert a.shape == b.shape
+    assert not np.array_equal(a, b)        # pixels were degraded
+    assert clean.boxes == degraded.boxes   # geometry (labels) unchanged

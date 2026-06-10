@@ -19,7 +19,8 @@ class InputConfig:
 
 @dataclass
 class PanelConfig:
-    method: str = "contour"
+    method: str = "contour"        # "contour" (OpenCV heuristic) | "yolo" (learned)
+    weights: str | None = None     # path to trained YOLO weights when method="yolo"
     min_area_ratio: float = 0.01
     max_area_ratio: float = 0.95
     padding: int = 5
