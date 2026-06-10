@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
 from PIL import Image
 
-from acmp.utils.image import is_image_file, load_image
 from acmp.ingest.pdf_extractor import extract_pages_from_pdf
+from acmp.utils.image import is_image_file, load_image
 
 logger = logging.getLogger(__name__)
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-import click
 from pathlib import Path
+
+import click
 
 from acmp import __version__
 from acmp.config import PipelineConfig
@@ -162,7 +163,7 @@ def process(
         if verbose:
             import traceback
             traceback.print_exc()
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command()
@@ -188,8 +189,9 @@ def info():
 
     click.echo("\nFFmpeg:")
     try:
-        from acmp.video.assembler import _find_ffmpeg
         import subprocess
+
+        from acmp.video.assembler import _find_ffmpeg
         exe = _find_ffmpeg()
         result = subprocess.run([exe, "-version"], capture_output=True, text=True)
         version_line = result.stdout.split("\n")[0] if result.stdout else "unknown"
@@ -243,8 +245,8 @@ def _check_dep(name: str, import_name: str):
 def _check_ollama():
     """Check if Ollama is running locally."""
     try:
-        import urllib.request
         import json
+        import urllib.request
         req = urllib.request.Request("http://localhost:11434/api/tags")
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read())

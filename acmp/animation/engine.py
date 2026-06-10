@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+
 from PIL import Image
 
-from acmp.config import AnimationConfig
-from acmp.animation.parallax import render_parallax_frames
 from acmp.animation.ken_burns import render_ken_burns_frames
+from acmp.animation.parallax import render_parallax_frames
 from acmp.animation.transitions import crossfade
+from acmp.config import AnimationConfig
 
 logger = logging.getLogger(__name__)
 

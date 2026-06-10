@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 import cv2
 import numpy as np
 from PIL import Image
-import logging
 
-from acmp.utils.image import pil_to_cv2, cv2_to_pil
+from acmp.utils.image import cv2_to_pil, pil_to_cv2
 
 logger = logging.getLogger(__name__)
 

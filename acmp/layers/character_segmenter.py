@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import gc
 import logging
-import numpy as np
+
 import cv2
+import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)

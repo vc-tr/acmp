@@ -1,5 +1,5 @@
 # Core
-opencv-python>=4.8
+opencv-python-headless>=4.8  # headless: no libGL/GUI deps (server/CLI/CI/Docker)
 Pillow>=10.0
 numpy>=1.24
 moviepy>=2.0

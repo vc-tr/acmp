@@ -8,7 +8,8 @@ version = "0.2.0"
 description = "Animated Comics/Manga-Manhwa Panels - Turn static comic pages into motion comic videos"
 requires-python = ">=3.10"
 dependencies = [
-    "opencv-python>=4.8",
+    # headless build: no libGL/GUI system deps — correct for a server/CLI/CI/Docker pipeline
+    "opencv-python-headless>=4.8",
     "Pillow>=10.0",
     "numpy>=1.24",
     "moviepy>=2.0",
@@ -34,6 +35,18 @@ ai = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "ruff>=0.6",
+]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+]
+demo = [
+    "streamlit>=1.30",
+]
+train = [
+    "ultralytics>=8.2",
 ]
 
 [project.scripts]
@@ -47,3 +60,19 @@ testpaths = ["tests"]
 markers = [
     "slow: tests that run the full pipeline / ffmpeg (deselect with -m 'not slow')",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, isort, pyupgrade, bugbear, comprehensions
+select = ["F", "E", "W", "I", "UP", "B", "C4"]
+ignore = [
+    "E501",  # line length is enforced loosely; long URLs/strings are fine
+    "B008",  # FastAPI uses function calls (Depends/File) in argument defaults
+    "B905",  # zip(strict=) — opinionated; not worth churning existing zips
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # tests sometimes import after fixtures/markers

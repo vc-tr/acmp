@@ -6,6 +6,7 @@ Uses MiDaS for Apple Silicon MPS compatibility, with Depth Anything V2 as an opt
 from __future__ import annotations
 
 import logging
+
 import numpy as np
 from PIL import Image
 
@@ -59,7 +60,7 @@ def _load_model(config: DepthConfig):
     else:
         raise ValueError(f"Unknown depth model: {config.model}")
 
-    logger.info(f"Depth model loaded successfully")
+    logger.info("Depth model loaded successfully")
 
 
 def estimate_depth(

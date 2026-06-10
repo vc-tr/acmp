@@ -5,12 +5,12 @@ learned) instead of eyeballing results — a core AI-engineering practice.
 """
 
 from acmp.eval.metrics import (
+    DetectionMetrics,
+    average_precision,
     box_iou,
+    evaluate_detections,
     match_boxes,
     precision_recall_f1,
-    average_precision,
-    evaluate_detections,
-    DetectionMetrics,
 )
 from acmp.eval.synthetic import generate_comic_page, generate_dataset
 

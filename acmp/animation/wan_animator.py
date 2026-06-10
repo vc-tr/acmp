@@ -7,9 +7,9 @@ from static comic panel images. Optimized for 8GB Apple Silicon.
 from __future__ import annotations
 
 import gc
-import os
 import logging
-from pathlib import Path
+import os
+
 from PIL import Image
 
 logger = logging.getLogger(__name__)

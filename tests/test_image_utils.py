@@ -6,8 +6,8 @@ import numpy as np
 from PIL import Image
 
 from acmp.utils.image import (
-    cv2_to_pil,
     crop_panel,
+    cv2_to_pil,
     is_color_image,
     is_image_file,
     load_image,

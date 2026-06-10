@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -21,10 +22,10 @@ def extract_pages_from_pdf(pdf_path: Path, dpi: int = 200) -> list[Image.Image]:
     """
     try:
         import fitz  # PyMuPDF
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "PyMuPDF is required for PDF support. Install with: pip install PyMuPDF"
-        )
+        ) from e
 
     doc = fitz.open(str(pdf_path))
     pages = []

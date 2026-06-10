@@ -11,13 +11,14 @@ import io
 import json
 import logging
 from dataclasses import dataclass, field
+
 from PIL import Image
 
 from acmp.scene.prompts import (
     PANEL_ANALYSIS_SYSTEM,
     PANEL_ANALYSIS_USER,
-    PANEL_CONTEXT_WITH_NEIGHBORS,
     PANEL_CONTEXT_STANDALONE,
+    PANEL_CONTEXT_WITH_NEIGHBORS,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,8 +144,8 @@ def analyze_panel_claude(
     """
     try:
         import anthropic
-    except ImportError:
-        raise ImportError("anthropic package required. Install with: pip install anthropic")
+    except ImportError as e:
+        raise ImportError("anthropic package required. Install with: pip install anthropic") from e
 
     client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-import numpy as np
 from PIL import Image, ImageDraw
 
 # (x, y, w, h) integer pixel box — the format used throughout acmp.
