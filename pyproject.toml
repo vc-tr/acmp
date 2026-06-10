@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "acmp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Animated Comics/Manga-Manhwa Panels - Turn static comic pages into motion comic videos"
 requires-python = ">=3.10"
 dependencies = [
@@ -41,3 +41,9 @@ acmp = "acmp.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["acmp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that run the full pipeline / ffmpeg (deselect with -m 'not slow')",
+]

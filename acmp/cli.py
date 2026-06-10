@@ -6,11 +6,12 @@ import logging
 import click
 from pathlib import Path
 
+from acmp import __version__
 from acmp.config import PipelineConfig
 
 
 @click.group()
-@click.version_option(version="0.2.0")
+@click.version_option(version=__version__)
 def main():
     """ACMP - Animated Comics/Manga-Manhwa Panels.
 
