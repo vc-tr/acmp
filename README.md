@@ -12,7 +12,7 @@ It ships as a **CLI**, a **REST API**, and a **web demo**, plus a trained-and-be
 
 ## Skills showcase
 
-This project is deliberately broad — each stage exercises a different competency expected of an AI engineer:
+This project is deliberately broad
 
 | Area | In this repo |
 |---|---|
