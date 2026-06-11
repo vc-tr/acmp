@@ -90,7 +90,7 @@ curl -o out.mp4 http://localhost:8000/jobs/<job_id>/result
 streamlit run streamlit_app.py   # upload → preview detected panels → render video
 ```
 
-Deployable as-is to Hugging Face Spaces / Streamlit Community Cloud.
+Deployable to Hugging Face Spaces / Streamlit Community Cloud — see [`deploy/huggingface/DEPLOY.md`](deploy/huggingface/DEPLOY.md) for ready-made Space files and a step-by-step guide.
 
 ### Docker
 
