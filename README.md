@@ -10,18 +10,6 @@ It ships as a **CLI**, a **REST API**, and a **web demo**, plus a trained-and-be
 
 ---
 
-## Skills showcase
-
-This project is deliberately broad
-
-| Area | In this repo |
-|---|---|
-| **Computer Vision** | OpenCV panel detection (contours, NMS), MiDaS depth, `rembg` segmentation, a **trained YOLOv8 detector** benchmarked vs. the heuristic |
-| **NLP / LLMs** | Vision-LLM scene analysis (Claude / Ollama) → structured motion prompts, with robust JSON parsing and graceful fallback |
-| **Generative DL** | Wan VACE 1.3B image-to-video diffusion; character/background composite animation |
-| **Evaluation** | IoU / precision / recall / F1 / AP@0.5 detection metrics, synthetic labeled data, clean-vs-degraded robustness benchmark |
-| **MLOps / Serving** | FastAPI async job API, Streamlit demo, Docker, GitHub Actions CI, ruff, pytest (90+ tests) |
-
 ## Architecture
 
 ```
