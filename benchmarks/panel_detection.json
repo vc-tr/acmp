@@ -1,0 +1,54 @@
+{
+  "clean": {
+    "heuristic (OpenCV)": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "ap50": 1.0,
+      "mean_iou": 0.9065,
+      "tp": 73,
+      "fp": 0,
+      "fn": 0,
+      "n_images": 16,
+      "iou_threshold": 0.5
+    },
+    "learned (YOLOv8n)": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "ap50": 1.0,
+      "mean_iou": 0.9874,
+      "tp": 73,
+      "fp": 0,
+      "fn": 0,
+      "n_images": 16,
+      "iou_threshold": 0.5
+    }
+  },
+  "degraded": {
+    "heuristic (OpenCV)": {
+      "precision": 0.8276,
+      "recall": 0.6575,
+      "f1": 0.7328,
+      "ap50": 0.5442,
+      "mean_iou": 0.7922,
+      "tp": 48,
+      "fp": 10,
+      "fn": 25,
+      "n_images": 16,
+      "iou_threshold": 0.5
+    },
+    "learned (YOLOv8n)": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "ap50": 1.0,
+      "mean_iou": 0.9872,
+      "tp": 73,
+      "fp": 0,
+      "fn": 0,
+      "n_images": 16,
+      "iou_threshold": 0.5
+    }
+  }
+}

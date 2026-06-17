@@ -1,175 +1,170 @@
-# ACMP - Animated Comics/Manga-Manhwa Panels
+# ACMP — Animated Comics / Manga / Manhwa Panels
 
-Turn static comic, manga, and manhwa chapters into animated motion comic videos with AI-powered character animation.
+[![CI](https://github.com/vc-tr/acmp/actions/workflows/ci.yml/badge.svg)](https://github.com/vc-tr/acmp/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## What it does
+Turn static comic, manga, and manhwa chapters into **animated motion-comic videos** (9:16 MP4 for TikTok/Reels) — with automatic panel detection, LLM scene understanding, and AI/Ken-Burns animation.
 
-ACMP takes chapter images (or a PDF) as input and produces a 9:16 vertical MP4 video with:
+It ships as a **CLI**, a **REST API**, and a **web demo**, plus a trained-and-benchmarked panel detector — an end-to-end applied-ML system spanning **CV, NLP/LLMs, generative DL, and MLOps**.
 
-- **AI animation** — characters actually move, swing swords, turn heads (Wan VACE 1.3B image-to-video)
-- **LLM scene analysis** — understands each panel's action, emotion, and motion to generate context-appropriate animation
-- **Auto panel detection** — finds and orders panels automatically using OpenCV
-- **Context-aware transitions** — cuts, crossfades, slides, fade-to-black chosen by scene context
-- **Multi-format support** — manga (B&W, RTL), manhwa (color, vertical scroll), western comics (LTR)
-- **Smart fallback** — gracefully degrades to Ken Burns/parallax when AI animation isn't available
+---
 
-## v2 Architecture
+## Architecture
 
 ```
-Input (images/PDF)
-  → Panel Detection (OpenCV contours)
-  → Scene Analysis (Claude API / Ollama / fallback)
-  → AI Animation (Wan VACE 1.3B image-to-video)
-  → Context-Aware Transitions
-  → Video Assembly (FFmpeg → MP4)
+                      ┌──────────────────────────────────────────────┐
+ Input (images/PDF) → │  Ingest → Panel Detection → Scene Analysis →  │ → MP4
+                      │          (OpenCV | YOLO)     (LLM vision)      │
+                      │   → Animation (Wan VACE AI | Ken Burns) →      │
+                      │   → Context-aware Transitions → FFmpeg encode  │
+                      └──────────────────────────────────────────────┘
+        Entry points:   CLI  ·  REST API (FastAPI)  ·  Web demo (Streamlit)
 ```
 
-The key difference from v1: instead of just zooming and panning on static panels (slideshow), v2 uses an AI image-to-video model to generate actual motion — characters move, capes flow, swords swing.
-
-## Installation
+## Install
 
 ```bash
 git clone https://github.com/vc-tr/acmp.git
 cd acmp
-pip install -e .
+pip install -e .                 # core (CPU, Ken-Burns animation, CLI)
+pip install -e ".[api]"          # + FastAPI REST server
+pip install -e ".[demo]"         # + Streamlit web demo
+pip install -e ".[train]"        # + ultralytics (train/benchmark the YOLO detector)
+pip install -e ".[ai,depth]"     # + Wan VACE AI animation & MiDaS depth (heavy)
+pip install -e ".[dev]"          # + pytest, ruff
 ```
 
-### AI animation (recommended)
+> **NumPy note:** the stack is pinned to `numpy<2` (Streamlit/MoviePy/Matplotlib require it). FFmpeg is bundled via `imageio-ffmpeg`; OpenCV is the headless build (no system OpenGL needed).
+
+## Quickstart
+
+### CLI
 
 ```bash
-pip install -e ".[ai]"
+# Render a chapter (fast, no AI — Ken Burns zoom/pan)
+acmp process -i ./chapter_pages/ -o video.mp4 --no-ai --llm fallback
 
-# Download the Wan VACE 1.3B model (~3GB download, ~18GB cached)
-acmp download
+# AI animation + Claude scene analysis (needs the [ai] extra + ANTHROPIC_API_KEY)
+acmp process -i ./chapter/ -o video.mp4 --llm claude
+
+# From a PDF, custom timing
+acmp process -i chapter.pdf -o video.mp4 -s 3.0 --fps 30
+
+acmp info        # system / dependency / device report
 ```
 
-### Scene analysis
-
-The pipeline uses an LLM to understand each panel and generate motion prompts.
-
-- **Claude API** (recommended): Set `ANTHROPIC_API_KEY` env var or pass `--api-key`
-- **Ollama** (local/offline): Install [Ollama](https://ollama.com), then `ollama pull llama3.2-vision`
-- **Fallback**: Generic motion prompts when no LLM is available
-
-### Depth parallax (optional, v1 fallback)
+### REST API
 
 ```bash
-pip install -e ".[depth]"
+acmp serve                       # http://127.0.0.1:8000  (docs at /docs)
+
+# Submit a job, poll, download
+curl -F "files=@p1.png" -F "files=@p2.png" -F "use_ai=false" http://localhost:8000/jobs
+curl http://localhost:8000/jobs/<job_id>
+curl -o out.mp4 http://localhost:8000/jobs/<job_id>/result
 ```
 
-## Usage
-
-```bash
-# AI animation with Claude scene analysis (recommended)
-acmp process -i ./chapter_pages/ -o video.mp4
-
-# AI animation with local LLM (offline, no API key needed)
-acmp process -i ./chapter/ -o video.mp4 --llm ollama
-
-# v1 fallback mode (no AI, Ken Burns zoom/pan only)
-acmp process -i ./chapter/ -o video.mp4 --no-ai
-
-# From a PDF
-acmp process -i chapter.pdf -o video.mp4
-
-# With depth parallax (v1 mode)
-acmp process -i ./chapter/ -o video.mp4 --no-ai --depth
-
-# Custom timing
-acmp process -i ./chapter/ -o video.mp4 -s 3.0 --fps 30
-
-# Check system info, dependencies, and compute device
-acmp info
-```
-
-### CLI Options
-
-| Option | Default | Description |
+| Method | Route | Purpose |
 |---|---|---|
-| `-i, --input` | (required) | Input path: directory of images or PDF |
-| `-o, --output` | (required) | Output MP4 file path |
-| `--ai / --no-ai` | `--ai` | Enable/disable AI animation (Wan VACE) |
-| `--llm` | `claude` | LLM for scene analysis: `claude`, `ollama`, or `fallback` |
-| `--api-key` | env var | Anthropic API key (or set `ANTHROPIC_API_KEY`) |
-| `--reading-order` | `auto` | Panel reading order: `auto`, `rtl`, `ltr`, `vertical` |
-| `-s, --seconds-per-panel` | `4.0` | Duration per panel in seconds |
-| `--fps` | `24` | Output frames per second |
-| `--depth / --no-depth` | `--no-depth` | Enable depth parallax (v1 fallback) |
-| `-c, --config` | built-in | Custom YAML config file |
-| `-v, --verbose` | off | Verbose logging |
+| `GET` | `/health` | liveness + version |
+| `POST` | `/jobs` | upload pages/PDF + params → job id (async) |
+| `GET` | `/jobs/{id}` | job status |
+| `GET` | `/jobs/{id}/result` | download the MP4 |
+
+### Web demo
+
+```bash
+streamlit run streamlit_app.py   # upload → preview detected panels → render video
+```
+
+Deployable to Hugging Face Spaces / Streamlit Community Cloud — see [`deploy/huggingface/DEPLOY.md`](deploy/huggingface/DEPLOY.md) for ready-made Space files and a step-by-step guide.
+
+### Docker
+
+```bash
+docker build -t acmp .
+docker run -p 8000:8000 acmp                         # REST API
+docker run -p 8501:8501 acmp \
+  streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+## Panel detection: heuristic vs. learned
+
+Panels can be found with a fast **OpenCV heuristic** (`panels.method: contour`, the default) or a **trained YOLOv8 detector** (`panels.method: yolo`, `panels.weights: <best.pt>`). To reproduce the model and benchmark:
+
+```bash
+pip install -e ".[train]"
+acmp train-detector --device cpu          # generate data → train YOLOv8n → benchmark
+acmp eval --weights runs/panel_detector/train/panel_detector/weights/best.pt
+```
+
+Both detectors are evaluated with the same IoU-matching metrics on held-out **clean** and **degraded** (noisy/blurred/compressed) synthetic pages:
+
+| Condition | Detector | Precision | Recall | F1 | AP@0.5 | mIoU |
+|---|---|---|---|---|---|---|
+| clean | heuristic (OpenCV) | 1.000 | 1.000 | 1.000 | 1.000 | 0.906 |
+| clean | learned (YOLOv8n) | 1.000 | 1.000 | 1.000 | 1.000 | **0.987** |
+| degraded | heuristic (OpenCV) | 0.828 | 0.658 | 0.733 | 0.544 | 0.792 |
+| degraded | learned (YOLOv8n) | **1.000** | **1.000** | **1.000** | **1.000** | **0.987** |
+
+<sub>YOLOv8n, 50 epochs (early-stopped at 42), 64 synthetic train pages, 16 held-out per condition. Full report: [`benchmarks/panel_detection.md`](benchmarks/panel_detection.md).</sub>
+
+**Takeaway:** the contour heuristic is excellent on clean scans but brittle under noise; the learned detector degrades gracefully — the classic motivation for a learned model.
+
+> Train on **CPU** (`--device cpu`): YOLO/MPS training is unstable on Apple Silicon in this stack (silent non-convergence). MPS is fine for inference.
 
 ## Configuration
 
-Default settings are in `configs/default.yaml`. Override with `--config`:
-
-```bash
-acmp process -i ./chapter/ -o video.mp4 --config my_config.yaml
-```
-
-Key settings:
+Defaults live in `configs/default.yaml`; override with `--config my.yaml`.
 
 | Setting | Default | Description |
 |---|---|---|
-| `animation.seconds_per_panel` | 4.0 | Duration per panel |
-| `animation.transition_duration` | 0.8 | Transition duration between panels |
-| `output.resolution` | [1080, 1920] | 9:16 vertical (TikTok/Reels) |
-| `output.fps` | 24 | Frames per second |
-| `input.reading_order` | auto | auto, rtl, ltr, or vertical |
+| `panels.method` | `contour` | `contour` (OpenCV) or `yolo` (learned) |
+| `panels.weights` | `null` | trained YOLO weights when `method: yolo` |
+| `animation.seconds_per_panel` | `4.0` | duration per panel |
+| `output.resolution` | `[1080, 1920]` | 9:16 vertical |
+| `output.fps` | `24` | frames per second |
+| `input.reading_order` | `auto` | `auto`/`rtl`/`ltr`/`vertical` |
 
-## How It Works
-
-1. **Load** — reads images from a directory or extracts pages from a PDF
-2. **Detect panels** — OpenCV contour analysis finds panel boundaries, auto-detects reading order (manga RTL, manhwa vertical, western LTR)
-3. **Scene analysis** — an LLM (Claude or Ollama) analyzes each panel to understand the action, characters, emotion, and suggests camera motion and transition type
-4. **AI animation** — Wan VACE 1.3B generates short video clips from each panel, guided by the LLM's motion prompts. Falls back to Ken Burns if AI fails or is disabled
-5. **Transitions** — context-aware transitions (crossfade, cut, slide, fade-to-black) are applied based on scene analysis
-6. **Encode** — frames are assembled into a final MP4 video via FFmpeg
-
-## Hardware Requirements
-
-| Component | Minimum | Recommended |
-|---|---|---|
-| RAM | 8GB (with CPU offloading) | 16GB+ |
-| GPU | Apple Silicon (MPS) or NVIDIA (CUDA) | Apple M-series / RTX 3060+ |
-| Disk | ~20GB (for model weights) | 30GB+ |
-| Python | 3.10+ | 3.11+ |
-
-On 8GB Apple Silicon, the pipeline uses CPU offloading and auto-downsizes resolution (480p → 320p → 256p) to fit in memory. Generation is slower (~1-3 min per panel) but works.
-
-## Project Structure
+## Project structure
 
 ```
 acmp/
-├── cli.py             # Command-line interface
-├── config.py          # YAML config loading
-├── pipeline.py        # Main orchestration pipeline
-├── ingest/            # Image/PDF loading
-├── panels/            # Panel detection (OpenCV)
-├── scene/             # LLM scene analysis (Claude/Ollama)
-├── animation/         # Animation engines
-│   ├── wan_animator.py    # Wan VACE 1.3B AI animation
-│   ├── ken_burns.py       # Ken Burns zoom/pan (fallback)
-│   ├── parallax.py        # 2.5D depth parallax (fallback)
-│   ├── engine.py          # v1 animation orchestrator
-│   └── transitions.py     # Crossfade, slide, fade-to-black
-├── depth/             # MiDaS depth estimation
-├── layers/            # Layer separation + inpainting
-├── video/             # FFmpeg video assembly
-└── utils/             # Image utilities, reading order detection
+├── cli.py            # CLI: process · eval · train-detector · serve · info
+├── pipeline.py       # orchestration
+├── ingest/           # image / PDF loading
+├── panels/           # detection: detector.py (OpenCV) + yolo_detector.py (learned)
+├── scene/            # LLM scene analysis (Claude / Ollama)
+├── animation/        # Wan VACE AI, Ken Burns, parallax, transitions
+├── depth/ · layers/  # MiDaS depth, rembg segmentation
+├── video/            # FFmpeg assembly
+├── eval/             # synthetic data, metrics, benchmark runner, YOLO training
+├── api/              # FastAPI serving layer
+└── demo/             # Streamlit web app
+tests/                # pytest suite (90+ tests)
 ```
 
-## Dependencies
-
-Core dependencies are installed automatically. Optional groups:
+## Development
 
 ```bash
-pip install -e ".[ai]"      # Wan VACE AI animation (diffusers, accelerate)
-pip install -e ".[depth]"   # Depth estimation (torch, timm)
-pip install -e ".[segment]" # Layer segmentation (torch, torchvision)
-pip install -e ".[dev]"     # Development (pytest)
+pip install -e ".[dev]"
+pytest -q                    # run tests (add -m "not slow" to skip pipeline/ffmpeg tests)
+pytest --cov=acmp            # with coverage
+ruff check .                 # lint
 ```
 
-FFmpeg is bundled via `imageio-ffmpeg` — no system install needed.
+CI runs lint + tests across Python 3.10–3.12 on every push/PR.
+
+## Hardware
+
+| Component | Minimum | Recommended |
+|---|---|---|
+| RAM | 8 GB | 16 GB+ |
+| GPU | Apple MPS / NVIDIA CUDA (AI animation) | M-series / RTX 3060+ |
+| Disk | ~20 GB (AI model weights) | 30 GB+ |
+
+The core pipeline (no-AI) and the API/demo run comfortably on CPU. AI animation auto-downsizes resolution and uses CPU offloading on 8 GB machines.
 
 ## License
 

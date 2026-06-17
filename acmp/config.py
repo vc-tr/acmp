@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import yaml
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
 
+import yaml
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "configs" / "default.yaml"
 
@@ -20,7 +19,8 @@ class InputConfig:
 
 @dataclass
 class PanelConfig:
-    method: str = "contour"
+    method: str = "contour"        # "contour" (OpenCV heuristic) | "yolo" (learned)
+    weights: str | None = None     # path to trained YOLO weights when method="yolo"
     min_area_ratio: float = 0.01
     max_area_ratio: float = 0.95
     padding: int = 5
@@ -98,12 +98,12 @@ class PipelineConfig:
     @classmethod
     def from_yaml(cls, path: Path) -> PipelineConfig:
         """Load config from a YAML file."""
-        with open(path, "r") as f:
+        with open(path) as f:
             data = yaml.safe_load(f)
         return cls._from_dict(data)
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> PipelineConfig:
+    def load(cls, config_path: Path | None = None) -> PipelineConfig:
         """Load config, falling back to defaults."""
         if config_path and config_path.exists():
             return cls.from_yaml(config_path)

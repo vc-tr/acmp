@@ -7,9 +7,9 @@ from static comic panel images. Optimized for 8GB Apple Silicon.
 from __future__ import annotations
 
 import gc
-import os
 import logging
-from pathlib import Path
+import os
+
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -277,26 +277,36 @@ def animate_panel_safe(
     quality: str | None = None,
     device: str | None = None,
 ) -> list[Image.Image] | None:
-    """Animate a panel with automatic resolution and frame count fallback.
+    """Animate a panel with automatic resolution and frame-count fallback.
 
-    Tries progressively lower resolutions and fewer frames if OOM errors occur.
-    Returns None if all attempts fail.
+    Tries progressively lower resolutions and fewer frames on OOM. **Never
+    raises** — any failure (OOM, missing torch/diffusers, model download error,
+    bad output) returns None so the pipeline degrades gracefully to Ken Burns.
     """
-    import torch
+    try:
+        import torch
+    except ImportError:
+        logger.error("torch not installed; AI animation unavailable — using fallback.")
+        return None
 
-    # Resolution + frame count tiers (9:16 aspect ratio, multiples of 16)
-    # Each tier: (width, height, num_frames)
-    # num_frames must follow 4k+1 rule
+    # Resolution + frame count tiers (9:16 aspect ratio, multiples of 16).
+    # Each tier: (width, height, num_frames); num_frames must follow the 4k+1 rule.
     attempts = [
         (320, 576, 17),   # 320p, 17 frames — best case for 8GB
         (256, 448, 17),   # 256p, 17 frames — lower res
         (256, 448, 13),   # 256p, 13 frames — minimal generation
     ]
 
+    def _is_oom(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return isinstance(exc, RuntimeError | MemoryError) and (
+            "out of memory" in msg or "mps" in msg or "memory" in msg
+        )
+
     for width, height, num_frames in attempts:
         try:
             logger.info(f"Attempting animation at {width}x{height}, {num_frames} frames...")
-            frames = animate_panel(
+            return animate_panel(
                 panel=panel,
                 motion_prompt=motion_prompt,
                 num_frames=num_frames,
@@ -305,13 +315,10 @@ def animate_panel_safe(
                 quality=quality,
                 device=device,
             )
-            return frames
-        except RuntimeError as e:
-            err_msg = str(e).lower()
-            if "out of memory" in err_msg or "mps" in err_msg:
+        except Exception as e:  # noqa: BLE001 - any failure must degrade to fallback
+            if _is_oom(e):
                 logger.warning(f"OOM at {width}x{height}/{num_frames}f, trying smaller...")
-                # Aggressive cleanup between attempts
-                unload_pipeline()
+                unload_pipeline()  # aggressive cleanup between attempts
                 gc.collect()
                 try:
                     if torch.backends.mps.is_available():
@@ -319,9 +326,8 @@ def animate_panel_safe(
                 except Exception:
                     pass
                 continue
-            else:
-                logger.error(f"Unexpected error: {e}")
-                return None
+            logger.error(f"AI animation failed ({type(e).__name__}: {e}); using fallback.")
+            return None
 
     logger.error("All resolution attempts failed (OOM). Panel will use fallback animation.")
     return None

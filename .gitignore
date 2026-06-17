@@ -24,6 +24,10 @@ models/
 # Output
 output/
 
+# Training artifacts (weights, datasets, ultralytics run dirs) — reproducible via `acmp train-detector`
+runs/
+yolo*.pt
+
 # IDE
 .vscode/
 .idea/
@@ -33,6 +37,17 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Local test inputs & sample outputs (not part of the repo)
+/input/
+/video.mp4
 
 # Misc
 *.log

@@ -1,7 +1,7 @@
 # Core
-opencv-python>=4.8
-Pillow>=10.0
-numpy>=1.24
+opencv-python-headless>=4.8,<4.10  # headless (no libGL); <4.10 keeps numpy<2 compatible
+Pillow>=10.0,<12                    # moviepy/streamlit require Pillow <12
+numpy>=1.24,<2                      # numpy 2.x breaks streamlit/moviepy/matplotlib in this stack
 moviepy>=2.0
 pyyaml>=6.0
 PyMuPDF>=1.23

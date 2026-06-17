@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 from PIL import Image
-from pathlib import Path
-from typing import Union
-
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 
 
-def load_image(path: Union[str, Path]) -> Image.Image:
+def load_image(path: str | Path) -> Image.Image:
     """Load an image file as a PIL Image (RGB)."""
     return Image.open(path).convert("RGB")
 

@@ -2,15 +2,42 @@
 
 from __future__ import annotations
 
+import logging
+
 import cv2
 import numpy as np
 from PIL import Image
-import logging
 
-from acmp.utils.image import pil_to_cv2
 from acmp.config import PanelConfig
+from acmp.utils.image import pil_to_cv2
 
 logger = logging.getLogger(__name__)
+
+
+def make_panel_detector(config: PanelConfig | None = None):
+    """Return a panel-detector callable ``page -> list[(x, y, w, h)]``.
+
+    Selects the detector from ``config.method``:
+      * ``"contour"`` (default) — the OpenCV heuristic.
+      * ``"yolo"`` — a trained YOLO model loaded from ``config.weights``.
+
+    Falls back to the heuristic if YOLO weights are missing or ultralytics is
+    not installed, so the pipeline never hard-fails on a misconfiguration.
+    """
+    if config is None:
+        config = PanelConfig()
+
+    if config.method == "yolo" and config.weights:
+        try:
+            from acmp.panels.yolo_detector import YoloPanelDetector
+
+            yolo = YoloPanelDetector(config.weights)
+            logger.info(f"Using learned YOLO panel detector: {config.weights}")
+            return yolo.detect
+        except Exception as e:
+            logger.warning(f"YOLO detector unavailable ({e}); falling back to contour heuristic")
+
+    return lambda page: detect_panels(page, config)
 
 
 def detect_panels(

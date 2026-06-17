@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from PIL import Image
-import math
 
 from acmp.config import ParallaxConfig
 

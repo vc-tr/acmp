@@ -6,11 +6,12 @@ Provides depth-based segmentation (MVP) and optional SAM2-based segmentation.
 from __future__ import annotations
 
 import logging
+
 import numpy as np
 from PIL import Image
 
-from acmp.depth.estimator import estimate_depth, depth_to_layers
-from acmp.config import LayerConfig, DepthConfig
+from acmp.config import DepthConfig, LayerConfig
+from acmp.depth.estimator import depth_to_layers, estimate_depth
 
 logger = logging.getLogger(__name__)
 

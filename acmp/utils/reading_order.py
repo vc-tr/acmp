@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PIL import Image
+
 from acmp.utils.image import is_color_image
 
 

@@ -12,14 +12,18 @@ from __future__ import annotations
 import gc
 import logging
 from pathlib import Path
+
 from PIL import Image
 from tqdm import tqdm
 
 from acmp.config import PipelineConfig
 from acmp.ingest.loader import load_chapter
-from acmp.panels.detector import detect_panels, detect_panels_vertical_scroll
+from acmp.panels.detector import (
+    detect_panels_vertical_scroll,
+    make_panel_detector,
+)
+from acmp.utils.image import crop_panel
 from acmp.utils.reading_order import detect_reading_order, sort_panels_by_reading_order
-from acmp.utils.image import crop_panel, resize_to_fit
 from acmp.video.assembler import frames_to_video
 
 logger = logging.getLogger(__name__)
@@ -89,13 +93,17 @@ def process_chapter(
     logger.info("Detecting panels...")
     all_panels: list[tuple[Image.Image, tuple[int, int, int, int], tuple[int, int]]] = []
 
+    # Detector chosen by config (contour heuristic by default, or a learned YOLO
+    # model when panels.method == "yolo"). Vertical scroll keeps its dedicated splitter.
+    panel_detector = make_panel_detector(config.panels)
+
     for page_idx, page in enumerate(tqdm(pages, desc="Panel detection", unit="page")):
         page_size = (page.width, page.height)
 
         if reading_order == "vertical":
             bboxes = detect_panels_vertical_scroll(page, config.panels)
         else:
-            bboxes = detect_panels(page, config.panels)
+            bboxes = panel_detector(page)
 
         bboxes = sort_panels_by_reading_order(bboxes, reading_order, page.height)
 
@@ -117,7 +125,7 @@ def process_chapter(
 
     # ========== Step 4: Scene Analysis (LLM) ==========
     logger.info("Analyzing panels with LLM...")
-    from acmp.scene.analyzer import analyze_chapter, PanelAnalysis
+    from acmp.scene.analyzer import analyze_chapter
 
     analyses = analyze_chapter(
         panels=panel_images,
@@ -235,9 +243,9 @@ def _animate_with_ai(
     When segmentation_data is available, uses composite animation:
     characters get AI animation, backgrounds get Ken Burns (preserves quality).
     """
-    from acmp.animation.wan_animator import animate_panel_safe, unload_pipeline
     from acmp.animation.ken_burns import render_ken_burns_frames
     from acmp.animation.postprocess import match_color_histogram, sharpen_frame, upscale_two_stage
+    from acmp.animation.wan_animator import animate_panel_safe, unload_pipeline
 
     panel_animations = []
     num_frames_per_panel = int(config.animation.seconds_per_panel * fps)
@@ -259,7 +267,7 @@ def _animate_with_ai(
             )
             if frames:
                 panel_animations.append(frames)
-                logger.info(f"  Composite animation: character AI + background Ken Burns")
+                logger.info("  Composite animation: character AI + background Ken Burns")
                 gc.collect()
                 continue
 
@@ -324,9 +332,10 @@ def _animate_composite(
     """
     import cv2
     import numpy as np
-    from acmp.animation.wan_animator import animate_panel_safe
+
     from acmp.animation.ken_burns import render_ken_burns_frames
     from acmp.animation.postprocess import match_color_histogram, sharpen_frame, upscale_two_stage
+    from acmp.animation.wan_animator import animate_panel_safe
 
     out_w, out_h = output_size
 
@@ -399,7 +408,7 @@ def _animate_with_v1(
     use_depth: bool,
 ) -> list[list[Image.Image]]:
     """Animate panels using v1 engine (Ken Burns/parallax)."""
-    from acmp.animation.engine import select_animation_type, animate_panel
+    from acmp.animation.engine import animate_panel, select_animation_type
 
     panel_animations = []
 

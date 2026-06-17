@@ -11,13 +11,14 @@ import io
 import json
 import logging
 from dataclasses import dataclass, field
+
 from PIL import Image
 
 from acmp.scene.prompts import (
     PANEL_ANALYSIS_SYSTEM,
     PANEL_ANALYSIS_USER,
-    PANEL_CONTEXT_WITH_NEIGHBORS,
     PANEL_CONTEXT_STANDALONE,
+    PANEL_CONTEXT_WITH_NEIGHBORS,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,32 @@ class PanelAnalysis:
         )
 
 
+def parse_analysis_json(text: str) -> dict:
+    """Extract a JSON object from an LLM response.
+
+    Vision LLMs often wrap JSON in markdown code fences (```json ... ```) or
+    surround it with prose. This strips fences and, failing that, grabs the
+    outermost ``{...}`` span. Raises ``json.JSONDecodeError`` if no valid JSON
+    is found, so callers can fall back gracefully.
+    """
+    text = text.strip()
+
+    # Strip a leading ```/```json fence and its closing ```.
+    if text.startswith("```"):
+        parts = text.split("\n", 1)
+        text = parts[1] if len(parts) > 1 else ""
+        text = text.rstrip()
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+    # If prose still surrounds the object, slice the outermost braces.
+    if not text.startswith("{") and "{" in text and "}" in text:
+        text = text[text.index("{"): text.rindex("}") + 1]
+
+    return json.loads(text)
+
+
 def _image_to_base64(image: Image.Image, max_size: int = 1024) -> str:
     """Convert PIL Image to base64 string, resizing if needed to save tokens."""
     # Resize to limit API costs
@@ -117,8 +144,8 @@ def analyze_panel_claude(
     """
     try:
         import anthropic
-    except ImportError:
-        raise ImportError("anthropic package required. Install with: pip install anthropic")
+    except ImportError as e:
+        raise ImportError("anthropic package required. Install with: pip install anthropic") from e
 
     client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
@@ -152,15 +179,7 @@ def analyze_panel_claude(
         )
 
         response_text = message.content[0].text.strip()
-
-        # Handle potential markdown code blocks in response
-        if response_text.startswith("```"):
-            response_text = response_text.split("\n", 1)[1]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            response_text = response_text.strip()
-
-        data = json.loads(response_text)
+        data = parse_analysis_json(response_text)
         analysis = PanelAnalysis.from_dict(data)
         logger.info(f"Panel {panel_idx + 1}: {analysis.description[:60]}...")
         return analysis
@@ -220,12 +239,9 @@ def analyze_panel_ollama(
 
         response_text = result.get("response", "").strip()
 
-        # Try to extract JSON from response
+        # Extract JSON from the response (handles fences / surrounding prose).
         if "{" in response_text:
-            json_start = response_text.index("{")
-            json_end = response_text.rindex("}") + 1
-            json_str = response_text[json_start:json_end]
-            data = json.loads(json_str)
+            data = parse_analysis_json(response_text)
             analysis = PanelAnalysis.from_dict(data)
             logger.info(f"Panel {panel_idx + 1} (Ollama): {analysis.description[:60]}...")
             return analysis

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
-import click
 from pathlib import Path
 
+import click
+
+from acmp import __version__
 from acmp.config import PipelineConfig
 
 
 @click.group()
-@click.version_option(version="0.2.0")
+@click.version_option(version=__version__)
 def main():
     """ACMP - Animated Comics/Manga-Manhwa Panels.
 
@@ -161,7 +163,7 @@ def process(
         if verbose:
             import traceback
             traceback.print_exc()
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command()
@@ -187,8 +189,9 @@ def info():
 
     click.echo("\nFFmpeg:")
     try:
-        from acmp.video.assembler import _find_ffmpeg
         import subprocess
+
+        from acmp.video.assembler import _find_ffmpeg
         exe = _find_ffmpeg()
         result = subprocess.run([exe, "-version"], capture_output=True, text=True)
         version_line = result.stdout.split("\n")[0] if result.stdout else "unknown"
@@ -230,6 +233,77 @@ def download():
     download_main()
 
 
+@main.command(name="eval")
+@click.option("--weights", default=None, type=click.Path(exists=True),
+              help="Optional trained YOLO weights to include in the benchmark.")
+@click.option("--n", default=20, help="Pages per condition (clean & degraded).")
+@click.option("--iou", default=0.5, help="IoU threshold for a true positive.")
+@click.option("--seed", default=0, help="RNG seed for the synthetic eval set.")
+def eval_cmd(weights: str | None, n: int, iou: float, seed: int):
+    """Benchmark panel detectors on a synthetic labeled set.
+
+    Always evaluates the OpenCV heuristic; add --weights to also benchmark a
+    trained YOLO detector. Reports precision/recall/F1/AP@0.5/mIoU on clean and
+    degraded (noisy) pages.
+    """
+    logging.getLogger("acmp.panels.detector").setLevel(logging.WARNING)
+    from acmp.eval.runner import benchmark_suite, format_results, heuristic_detector
+    from acmp.eval.synthetic import generate_split
+
+    split = generate_split(n_train=0, n_val=0, n_test=n, seed=seed)
+    detectors = {"heuristic (OpenCV)": heuristic_detector}
+    if weights:
+        from acmp.panels.yolo_detector import YoloPanelDetector
+        detectors["learned (YOLOv8)"] = YoloPanelDetector(weights)
+
+    conditions = {"clean": split["test_clean"], "degraded": split["test_degraded"]}
+    results = benchmark_suite(detectors, conditions, iou_threshold=iou)
+    click.echo(format_results(results))
+
+
+@main.command(name="train-detector")
+@click.option("--epochs", default=35, help="Training epochs.")
+@click.option("--imgsz", default=512, help="Training image size.")
+@click.option("--out", default="runs/panel_detector", help="Output directory.")
+@click.option("--n-train", default=72, help="Number of synthetic training pages.")
+@click.option("--device", default="auto", help="auto | mps | cpu | cuda index.")
+def train_detector_cmd(epochs: int, imgsz: int, out: str, n_train: int, device: str):
+    """Train a YOLOv8 panel detector on synthetic data and benchmark it.
+
+    Generates a labeled split, exports YOLO format, fine-tunes YOLOv8n, then
+    compares it against the OpenCV heuristic on held-out clean & degraded pages.
+    Requires the training extra: pip install -e ".[train]"
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
+    )
+    from acmp.eval.train import train_panel_detector
+    result = train_panel_detector(
+        out_dir=out, epochs=epochs, imgsz=imgsz, n_train=n_train, device=device
+    )
+    click.echo("\n" + result["report"])
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", help="Bind host.")
+@click.option("--port", default=8000, help="Bind port.")
+@click.option("--reload", is_flag=True, default=False, help="Auto-reload (dev).")
+def serve(host: str, port: int, reload: bool):
+    """Run the ACMP REST API server (FastAPI + uvicorn).
+
+    Then open http://HOST:PORT/docs for interactive API docs.
+    Requires the api extra: pip install -e ".[api]"
+    """
+    try:
+        import uvicorn
+    except ImportError as e:
+        raise click.ClickException(
+            'uvicorn not installed. Install with: pip install -e ".[api]"'
+        ) from e
+    click.echo(f"Serving ACMP API at http://{host}:{port}  (docs: /docs)")
+    uvicorn.run("acmp.api.app:app", host=host, port=port, reload=reload)
+
+
 def _check_dep(name: str, import_name: str):
     try:
         mod = __import__(import_name)
@@ -242,8 +316,8 @@ def _check_dep(name: str, import_name: str):
 def _check_ollama():
     """Check if Ollama is running locally."""
     try:
-        import urllib.request
         import json
+        import urllib.request
         req = urllib.request.Request("http://localhost:11434/api/tags")
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read())
