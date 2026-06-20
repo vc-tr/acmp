@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 
 import cv2
@@ -23,7 +24,8 @@ def inpaint_background(
     Args:
         image: Original panel image (PIL RGB).
         foreground_mask: Boolean mask where True = foreground to remove.
-        method: 'opencv' for cv2.inpaint, 'lama' for LaMa (future).
+        method: 'opencv' for cv2.inpaint, 'lama' for the LaMa model
+            (falls back to OpenCV when LaMa's deps/weights are unavailable).
 
     Returns:
         Inpainted background image (PIL RGB) with foreground regions filled.
@@ -31,9 +33,34 @@ def inpaint_background(
     if method == "opencv":
         return _inpaint_opencv(image, foreground_mask)
     elif method == "lama":
-        raise NotImplementedError("LaMa inpainting not yet implemented. Use 'opencv'.")
+        return _inpaint_lama(image, foreground_mask)
     else:
         raise ValueError(f"Unknown inpainting method: {method}")
+
+
+@functools.lru_cache(maxsize=1)
+def _load_lama():
+    """Load and cache the LaMa model (downloads weights on first use)."""
+    from simple_lama_inpainting import SimpleLama
+
+    return SimpleLama()
+
+
+def _inpaint_lama(image: Image.Image, mask: np.ndarray) -> Image.Image:
+    """Inpaint with the LaMa model, degrading to OpenCV if it is unavailable.
+
+    LaMa fills large masked regions far more cleanly than OpenCV's diffusion
+    methods, but it pulls in torch and downloads model weights on first use.
+    If the dependency or weights are unavailable we fall back to OpenCV so the
+    pipeline keeps working everywhere.
+    """
+    try:
+        lama = _load_lama()
+        mask_img = Image.fromarray((mask.astype(np.uint8)) * 255)
+        return lama(image.convert("RGB"), mask_img).convert("RGB")
+    except Exception as exc:
+        logger.warning("LaMa inpainting unavailable (%s); falling back to OpenCV.", exc)
+        return _inpaint_opencv(image, mask)
 
 
 def _inpaint_opencv(image: Image.Image, mask: np.ndarray) -> Image.Image:
