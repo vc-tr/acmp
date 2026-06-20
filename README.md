@@ -168,4 +168,4 @@ The core pipeline (no-AI) and the API/demo run comfortably on CPU. AI animation 
 
 ## License
 
-MIT
+Released under the [MIT License](LICENSE).
